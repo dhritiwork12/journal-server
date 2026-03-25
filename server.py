@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import List
 import websockets
 from groq import Groq
+from supabase import create_client
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +22,11 @@ app.add_middleware(
 )
 
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY     = os.getenv("GROQ_API_KEY")
+SUPABASE_URL     = os.getenv("SUPABASE_URL")
+SUPABASE_KEY     = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 DEEPGRAM_URL = (
     "wss://api.deepgram.com/v1/listen"
@@ -33,6 +38,10 @@ DEEPGRAM_URL = (
     "&punctuate=true"
 )
 
+
+# ─────────────────────────────────────────────
+# WebSocket: real-time transcription proxy
+# ─────────────────────────────────────────────
 @app.websocket("/transcribe")
 async def transcribe(esp32: WebSocket):
     await esp32.accept()
@@ -81,6 +90,10 @@ async def transcribe(esp32: WebSocket):
         print("Session ended")
 
 
+# ─────────────────────────────────────────────
+# POST /journal
+# Compile journal entry from transcripts
+# ─────────────────────────────────────────────
 class JournalRequest(BaseModel):
     date: str
     entries: List[dict]
@@ -111,7 +124,6 @@ Format your response as JSON like this:
 Return only the JSON, nothing else."""
 
     client = Groq(api_key=GROQ_API_KEY)
-
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
@@ -119,17 +131,39 @@ Return only the JSON, nothing else."""
     )
 
     raw = response.choices[0].message.content
-
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
         clean = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(clean)
 
-    print(f"Journal compiled for {request.date}: {result['title']}")
+    # Save to Supabase
+    supabase.table("entries").insert({
+        "date": request.date,
+        "time": request.entries[0]["time"] if request.entries else "",
+        "transcript": stitched,
+        "title": result["title"],
+        "body": result["body"],
+        "themes": ", ".join(result["themes"])
+    }).execute()
+
+    print(f"Journal compiled and saved: {result['title']}")
     return result
 
 
+# ─────────────────────────────────────────────
+# GET /entries
+# Get all journal entries
+# ─────────────────────────────────────────────
+@app.get("/entries")
+async def get_entries():
+    response = supabase.table("entries").select("*").order("date", desc=True).execute()
+    return response.data
+
+
+# ─────────────────────────────────────────────
+# Health check
+# ─────────────────────────────────────────────
 @app.get("/")
 def root():
     return {"status": "Journal server running"}

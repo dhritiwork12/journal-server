@@ -5,3 +5,4 @@ deepgram-sdk
 groq
 python-dotenv
 requests
+supabase

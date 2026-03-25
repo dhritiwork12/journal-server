@@ -1,6 +1,6 @@
 import requests
 
-response = requests.post("http://localhost:8000/journal", json={
+response = requests.post("https://journal-server-vqkc.onrender.com/journal", json={
     "date": "2026-03-22",
     "entries": [
         {"time": "09:14", "transcript": "so i woke up late today and missed my morning run"},
