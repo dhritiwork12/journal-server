@@ -1,19 +1,22 @@
-import asyncio
-import json
 import os
+import json
+import base64
+import asyncio
+from typing import List
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
-import websockets
 from groq import Groq
-from supabase import create_client
+from supabase import create_client, Client
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Initialize App
 app = FastAPI()
 
+# Enable CORS for your GitHub Pages dashboard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,154 +24,93 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-GROQ_API_KEY     = os.getenv("GROQ_API_KEY")
-SUPABASE_URL     = os.getenv("SUPABASE_URL")
-SUPABASE_KEY     = os.getenv("SUPABASE_KEY")
+# Clients
+groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
+supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-DEEPGRAM_URL = (
-    "wss://api.deepgram.com/v1/listen"
-    "?encoding=linear16"
-    "&sample_rate=16000"
-    "&channels=1"
-    "&model=nova-2"
-    "&interim_results=true"
-    "&punctuate=true"
-)
-
+# Data Models
+class JournalEntry(BaseModel):
+    title: str
+    body: str
+    themes: List[str]
 
 # ─────────────────────────────────────────────
-# WebSocket: real-time transcription proxy
+# WebSocket: Real-time Transcription
 # ─────────────────────────────────────────────
 @app.websocket("/transcribe")
-async def transcribe(esp32: WebSocket):
-    await esp32.accept()
-    print("ESP32 connected")
-
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    audio_data = bytearray()
+    
     try:
-        async with websockets.connect(
-            DEEPGRAM_URL,
-            extra_headers={"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        ) as deepgram:
-            print("Connected to Deepgram")
-
-            async def send_audio():
-                try:
-                    while True:
-                        audio_chunk = await esp32.receive_bytes()
-                        await deepgram.send(audio_chunk)
-                except WebSocketDisconnect:
-                    await deepgram.send(json.dumps({"type": "CloseStream"}))
-                    print("ESP32 disconnected")
-
-            async def receive_transcript():
-                try:
-                    async for message in deepgram:
-                        data = json.loads(message)
-                        if data.get("type") == "Results":
-                            transcript = (
-                                data["channel"]["alternatives"][0]["transcript"]
-                            )
-                            is_final = data["is_final"]
-                            if transcript.strip():
-                                payload = json.dumps({
-                                    "transcript": transcript,
-                                    "is_final": is_final
-                                })
-                                await esp32.send_text(payload)
-                                print(f"{'[FINAL]' if is_final else '[partial]'} {transcript}")
-                except Exception as e:
-                    print(f"Deepgram error: {e}")
-
-            await asyncio.gather(send_audio(), receive_transcript())
-
-    except Exception as e:
-        print(f"Connection error: {e}")
-    finally:
-        print("Session ended")
-
+        while True:
+            data = await websocket.receive_bytes()
+            audio_data.extend(data)
+            
+            # Every 3 seconds of audio (~96kb), get a partial transcript
+            if len(audio_data) > 96000:
+                # Save temp file for Groq
+                with open("temp.wav", "wb") as f:
+                    f.write(audio_data)
+                
+                with open("temp.wav", "rb") as f:
+                    transcription = groq.audio.transcriptions.create(
+                        file=("temp.wav", f.read()),
+                        model="whisper-large-v3",
+                        response_format="json",
+                    )
+                
+                await websocket.send_json({
+                    "transcript": transcription.text,
+                    "is_final": False
+                })
+    except WebSocketDisconnect:
+        print("Client disconnected")
 
 # ─────────────────────────────────────────────
 # POST /journal
-# Compile journal entry from transcripts
+# Process transcript and save to Supabase
 # ─────────────────────────────────────────────
-class JournalRequest(BaseModel):
-    date: str
-    entries: List[dict]
-
 @app.post("/journal")
-async def compile_journal(request: JournalRequest):
-    stitched = ""
-    for entry in request.entries:
-        stitched += f"\n[{entry['time']}]\n{entry['transcript']}\n"
-
-    prompt = f"""Here is everything I said on {request.date}, recorded throughout the day with timestamps:
-
-{stitched}
-
-Write a reflective, first-person journal entry based on this.
-- Clean up any filler words or repetition
-- Group related thoughts into paragraphs
-- Keep my natural voice and tone
-- Give the entry a short title
-- At the end, add a Key Themes line with 3-5 words or short phrases
-
-Format your response as JSON like this:
-{{
-  "title": "...",
-  "body": "...",
-  "themes": ["...", "...", "..."]
-}}
-Return only the JSON, nothing else."""
-
-    client = Groq(api_key=GROQ_API_KEY)
-    response = client.chat.completions.create(
+async def create_journal(transcript: dict):
+    text = transcript.get("text", "")
+    
+    # Use Groq to Structure the Entry
+    completion = groq.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1024
+        messages=[
+            {"role": "system", "content": "You are a helpful journal assistant. Summarize the user's voice transcript into a title, a coherent journal body, and 3 key themes. Respond ONLY in JSON format."},
+            {"role": "user", "content": text}
+        ],
+        response_format={"type": "json_object"}
     )
-
-    raw = response.choices[0].message.content
-    try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        result = json.loads(clean)
-
+    
+    structured_data = json.loads(completion.choices[0].message.content)
+    
     # Save to Supabase
-    supabase.table("entries").insert({
-        "date": request.date,
-        "time": request.entries[0]["time"] if request.entries else "",
-        "transcript": stitched,
-        "title": result["title"],
-        "body": result["body"],
-        "themes": ", ".join(result["themes"])
-    }).execute()
-
-    print(f"Journal compiled and saved: {result['title']}")
-    return result
-
+    entry_to_save = {
+        "title": structured_data.get("title", "New Entry"),
+        "body": structured_data.get("body", text),
+        "themes": ", ".join(structured_data.get("themes", [])),
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    supabase.table("entries").insert(entry_to_save).execute()
+    return entry_to_save
 
 # ─────────────────────────────────────────────
 # GET /entries
-# Get all journal entries
+# Get all journal entries (SECURE)
 # ─────────────────────────────────────────────
 @app.get("/entries")
-async def get_entries():
+async def get_entries(password: str = None):
+    # Security Check: Compare URL password with Render Environment Variable
+    if password != os.getenv("JOURNAL_PASSWORD"):
+        return {"error": "Unauthorized"}
+        
     response = supabase.table("entries").select("*").order("date", desc=True).execute()
     return response.data
 
-
-# ─────────────────────────────────────────────
-# Health check
-# ─────────────────────────────────────────────
-@app.get("/")
-def root():
-    return {"status": "Journal server running"}
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
