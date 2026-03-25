@@ -1,0 +1,69 @@
+<
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Voice Journal</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        heade!DOCTYPE html>r { border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }
+        h1 { color: #22c55e; margin: 0; }
+        .entry-card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #334155; }
+        .date { color: #94a3b8; font-size: 0.85rem; margin-bottom: 8px; font-weight: bold; }
+        h2 { margin: 0 0 12px 0; color: #f1f5f9; }
+        .content { line-height: 1.6; color: #cbd5e1; margin-bottom: 15px; }
+        .themes { display: flex; gap: 8px; flex-wrap: wrap; }
+        .theme-tag { background: #064e3b; color: #4ade80; padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: bold; }
+        .loading { text-align: center; color: #94a3b8; margin-top: 50px; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📔 My Voice Journal</h1>
+            <p>Cloud Server: Online</p>
+        </header>
+        <div id="entries-list">
+            <div class="loading">Waking up the server... please wait...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://journal-server-vqkc.onrender.com/entries";
+
+        async function fetchEntries() {
+            try {
+                const response = await fetch(API_URL);
+                const entries = await response.json();
+                const list = document.getElementById('entries-list');
+                list.innerHTML = '';
+
+                if (entries.length === 0) {
+                    list.innerHTML = '<div class="loading">No entries found. Try running test.py again!</div>';
+                    return;
+                }
+
+                entries.forEach(entry => {
+                    const card = document.createElement('div');
+                    card.className = 'entry-card';
+                    card.innerHTML = `
+                        <div class="date">${entry.date}</div>
+                        <h2>${entry.title}</h2>
+                        <div class="content">${entry.body}</div>
+                        <div class="themes">
+                            ${entry.themes.split(',').map(t => `<span class="theme-tag">${t.trim()}</span>`).join('')}
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            } catch (error) {
+                document.getElementById('entries-list').innerHTML = 
+                    '<div class="loading">Error connecting to server. Make sure it is live on Render!</div>';
+            }
+        }
+
+        fetchEntries();
+    </script>
+</body>
+</html>
