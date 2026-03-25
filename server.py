@@ -104,13 +104,17 @@ async def create_journal(transcript: dict):
 # ─────────────────────────────────────────────
 @app.get("/entries")
 async def get_entries(password: str = None):
-    # Security Check: Compare URL password with Render Environment Variable
-    if password != os.getenv("JOURNAL_PASSWORD"):
+    # Get the password from Render environment variables
+    # If not found, it defaults to a very long random string so nobody can guess it
+    correct_password = os.getenv("JOURNAL_PASSWORD", "STAY_LOCKED_UNLESS_SET_IN_RENDER")
+    
+    # Strictly check the password
+    if not password or password != correct_password:
         return {"error": "Unauthorized"}
         
+    # Only if password is correct, fetch data from Supabase
     response = supabase.table("entries").select("*").order("date", desc=True).execute()
     return response.data
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=10000)
