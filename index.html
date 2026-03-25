@@ -1,56 +1,73 @@
-<
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Voice Journal</title>
+    <title>My Private Journal</title>
     <style>
-        body { font-family: 'Segoe  UI', sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        heade!DOCTYPE html>r { border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }
-        h1 { color: #22c55e; margin: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 800px; display: none; } /* Hidden by default */
+        #login-box { background: #1e293b; padding: 30px; border-radius: 12px; text-align: center; border: 1px solid #334155; }
+        input { padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; width: 80%; margin-bottom: 20px; text-align: center; }
+        button { padding: 10px 20px; background: #22c55e; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        /* Dashboard Styles */
+        header { border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; text-align: center; }
         .entry-card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #334155; }
-        .date { color: #94a3b8; font-size: 0.85rem; margin-bottom: 8px; font-weight: bold; }
-        h2 { margin: 0 0 12px 0; color: #f1f5f9; }
-        .content { line-height: 1.6; color: #cbd5e1; margin-bottom: 15px; }
-        .themes { display: flex; gap: 8px; flex-wrap: wrap; }
-        .theme-tag { background: #064e3b; color: #4ade80; padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: bold; }
-        .loading { text-align: center; color: #94a3b8; margin-top: 50px; font-style: italic; }
+        .date { color: #94a3b8; font-size: 0.85rem; margin-bottom: 8px; }
+        h2 { margin: 0 0 12px 0; color: #22c55e; }
+        .theme-tag { background: #064e3b; color: #4ade80; padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; margin-right: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
+
+    <!-- Login Screen -->
+    <div id="login-box">
+        <h1>🔒 Private Vault</h1>
+        <p>Enter your secret code to view entries</p>
+        <input type="password" id="pass-input" placeholder="Password...">
+        <br>
+        <button onclick="checkPass()">Unlock</button>
+    </div>
+
+    <!-- The Actual Journal (Hidden) -->
+    <div class="container" id="main-content">
         <header>
             <h1>📔 My Voice Journal</h1>
-            <p>Cloud Server: Online</p>
         </header>
-        <div id="entries-list">
-            <div class="loading">Waking up the server... please wait...</div>
-        </div>
+        <div id="entries-list"></div>
     </div>
 
     <script>
-        const API_URL = "https://journal-server-vqkc.onrender.com/entries";
+        // CHANGE THIS TO YOUR SECRET PASSWORD
+        const SECRET_PASS = "1234"; 
+
+        function checkPass() {
+            const input = document.getElementById('pass-input').value;
+            if (input === SECRET_PASS) {
+                document.getElementById('login-box').style.display = 'none';
+                document.getElementById('main-content').style.display = 'block';
+                document.body.style.display = 'block'; // Change layout
+                fetchEntries();
+            } else {
+                alert("Wrong code!");
+            }
+        }
 
         async function fetchEntries() {
+            const API_URL = "https://journal-server-vqkc.onrender.com/entries";
             try {
                 const response = await fetch(API_URL);
                 const entries = await response.json();
                 const list = document.getElementById('entries-list');
                 list.innerHTML = '';
-
-                if (entries.length === 0) {
-                    list.innerHTML = '<div class="loading">No entries found. Try running test.py again!</div>';
-                    return;
-                }
-
                 entries.forEach(entry => {
                     const card = document.createElement('div');
                     card.className = 'entry-card';
                     card.innerHTML = `
                         <div class="date">${entry.date}</div>
                         <h2>${entry.title}</h2>
-                        <div class="content">${entry.body}</div>
+                        <p>${entry.body}</p>
                         <div class="themes">
                             ${entry.themes.split(',').map(t => `<span class="theme-tag">${t.trim()}</span>`).join('')}
                         </div>
@@ -58,12 +75,18 @@
                     list.appendChild(card);
                 });
             } catch (error) {
-                document.getElementById('entries-list').innerHTML = 
-                    '<div class="loading">Error connecting to server. Make sure it is live on Render!</div>';
+                console.error(error);
             }
         }
-
-        fetchEntries();
     </script>
 </body>
 </html>
+```
+
+3.  **Change the password:** Look for `const SECRET_PASS = "1234";` and change `"1234"` to whatever you want.
+4.  Press **Ctrl+S** and close Notepad.
+5.  **Push the change:**
+    ```cmd
+    git add index.html
+    git commit -m "Add password protection"
+    git push
