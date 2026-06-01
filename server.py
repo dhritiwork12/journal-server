@@ -27,7 +27,7 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 SAMPLE_RATE = 8000       # must match ESP32
-CHUNK_BYTES = 128000      # transcribe every ~2 seconds of audio
+CHUNK_BYTES = 192000      # transcribe every ~2 seconds of audio
 
 # ─────────────────────────────────────────────
 # Write proper WAV file from raw PCM bytes
