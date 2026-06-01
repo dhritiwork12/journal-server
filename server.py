@@ -126,11 +126,13 @@ async def create_journal(transcript: dict):
     structured = json.loads(completion.choices[0].message.content)
 
     entry = {
-        "title": structured.get("title", "New Entry"),
-        "body": structured.get("body", text),
-        "themes": ", ".join(structured.get("themes", [])),
-        "date": date
-    }
+    "title": structured.get("title", "New Entry"),
+    "body": structured.get("body", text),
+    "themes": ", ".join(structured.get("themes", [])),
+    "date": date,
+    "time": datetime.now().strftime("%H:%M"),
+    "transcript": text
+}
 
     supabase.table("entries").insert(entry).execute()
     print(f"Saved journal: {entry['title']}")
