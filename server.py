@@ -84,7 +84,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Write proper WAV and transcribe
                 write_wav("temp_chunk.wav", chunk)
-                text = transcribe_audio("temp_chunk.wav")
+loop = asyncio.get_event_loop()
+text = await loop.run_in_executor(None, transcribe_audio, "temp_chunk.wav")
 
                 if text:
                     full_transcript += " " + text
