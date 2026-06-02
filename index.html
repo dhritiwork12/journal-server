@@ -22,7 +22,6 @@
         .entry-card h2 { margin-bottom: 12px; color: #22c55e; font-size: 1.2rem; }
         .entry-card p { line-height: 1.7; color: #cbd5e1; margin-bottom: 16px; }
         .theme-tag { background: #064e3b; color: #4ade80; padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; margin-right: 5px; display: inline-block; margin-bottom: 4px; }
-        #loading { text-align: center; color: #94a3b8; padding: 40px; }
     </style>
 </head>
 <body>
@@ -39,27 +38,19 @@
     <header>
         <h1>📔 My Voice Journal</h1>
     </header>
-    <div id="entries-list">
-        <div id="loading">Loading entries...</div>
-    </div>
+    <div id="entries-list"></div>
 </div>
 
 <script>
-    let savedPassword = "";
-
     async function unlock() {
         const pass = document.getElementById('pass-input').value;
         if (!pass) return;
-
         const res = await fetch(`https://journal-server-vqkc.onrender.com/entries?password=${encodeURIComponent(pass)}`);
         const data = await res.json();
-
         if (data.error) {
             document.getElementById('error-msg').style.display = 'block';
             return;
         }
-
-        savedPassword = pass;
         document.getElementById('login-box').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
         renderEntries(data);
@@ -79,7 +70,7 @@
             card.innerHTML = `
                 <div class="date">📅 ${entry.date} ${entry.time ? '· ' + entry.time : ''}</div>
                 <h2>${entry.title || 'Untitled'}</h2>
-                <p>${entry.body || ''}</p>
+                <p>${entry.transcript || entry.body || ''}</p>
                 <div>${themes}</div>
             `;
             list.appendChild(card);
