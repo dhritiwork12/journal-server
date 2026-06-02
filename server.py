@@ -44,17 +44,21 @@ def write_wav(filename: str, pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE):
 # ─────────────────────────────────────────────
 def transcribe_audio(filename: str) -> str:
     try:
+        from deepgram import DeepgramClient, PrerecordedOptions
+        dg = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"))
         with open(filename, "rb") as f:
-            result = groq_client.audio.transcriptions.create(
-                file=(filename, f.read()),
-                model="whisper-large-v3",
-                response_format="json",
-            )
-        return result.text.strip()
+            buffer_data = f.read()
+        payload = {"buffer": buffer_data}
+        options = PrerecordedOptions(
+            model="nova-2",
+            language="en",
+            punctuate=True,
+        )
+        response = dg.listen.prerecorded.v("1").transcribe_file(payload, options)
+        return response.results.channels[0].alternatives[0].transcript
     except Exception as e:
         print(f"Transcription error: {e}")
         return ""
-
 # ─────────────────────────────────────────────
 # WebSocket: Real-time transcription
 # ESP32 sends raw 16-bit PCM at 8kHz
